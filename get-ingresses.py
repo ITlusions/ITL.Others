@@ -26,6 +26,23 @@ def get_kubernetes_resource(resource, crd=False):
         print(f"Error: Unable to parse JSON output for {resource}.")
         sys.exit(1)
 
+def extract_match_conditions(match):
+    """Extract Host and PathPrefix conditions from the match string."""
+    conditions = {
+        "hosts": [],
+        "paths": []
+    }
+    
+    # Extract Host conditions (e.g., Host(`example.com`))
+    host_matches = re.findall(r'Host\(`([^`]+)`\)', match)
+    conditions["hosts"].extend(host_matches)
+    
+    # Extract PathPrefix conditions (e.g., PathPrefix(`/api`))
+    path_matches = re.findall(r'PathPrefix\(`([^`]+)`\)', match)
+    conditions["paths"].extend(path_matches)
+    
+    return conditions
+
 def get_ingress_info():
     """Parse standard Kubernetes Ingress resources."""
     ingress_data = get_kubernetes_resource("ingress")
@@ -66,21 +83,17 @@ def get_ingressroute_info():
         
         for route in routes:
             match = route.get("match", "N/A")
-            path_value = "N/A"
+            conditions = extract_match_conditions(match)  # Extract conditions
             
-            # Handle Host(`...`) format
-            if match.startswith("Host(`") and match.endswith("`)"):
-                match = match[6:-2]  # Clean the Host value
-            # Handle PathPrefix(`...`) and multiple PathPrefixes separated by " || "
-            elif "PathPrefix(`" in match:
-                path_value = " || ".join([part[12:-2] for part in match.split(" || ")])
-                match = "N/A"  # Set match to N/A as this is a path, not a host
+            # Prepare the combined match value (both Host and PathPrefix)
+            host_value = " || ".join(conditions["hosts"]) if conditions["hosts"] else "N/A"
+            path_value = " || ".join(conditions["paths"]) if conditions["paths"] else "N/A"
             
             services = route.get("services", [])
             for service in services:
                 backend_service = service.get("name", "N/A")
                 backend_port = service.get("port", "N/A")
-                table.append([namespace, "IngressRoute", match, path_value, backend_service, backend_port])
+                table.append([namespace, "IngressRoute", host_value, path_value, backend_service, backend_port])
     
     return table
 
